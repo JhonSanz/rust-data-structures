@@ -1,5 +1,6 @@
 use std::f64;
-
+mod pointers; // funciona
+use pointers::pointers_tour; // no funciona
 
 
 //
@@ -64,7 +65,7 @@ fn unsafe_demo() {
 // MAIN
 //
 fn main() {
-
+    pointers_tour();
     // println!("\n--- 2) Functions ---");
     // println!("5 + 3 = {}", add(5, 3));
 
