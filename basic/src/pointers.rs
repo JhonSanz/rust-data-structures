@@ -84,7 +84,6 @@ fn box_demo() {
     println!("Box contiene {} {:p}", bx, y);
 }
 
-
 /***
 -----------------------------------------------------------
    2. Rc<T>: Contador de referencias (solo single-thread)
@@ -93,7 +92,8 @@ fn box_demo() {
 ¿Qué es Rc<T>?
 Rc significa Reference Counted.
 
-Es un puntero inteligente que te permite tener múltiples dueños de un mismo valor EN EL HEAP.
+Es un puntero inteligente que te permite tener múltiples dueños
+de un mismo valor EN EL HEAP.
 
 Funciona solo en single-thread (no es seguro para hilos, para eso existe Arc<T>).
 
@@ -114,6 +114,15 @@ Cuando varias partes de tu programa necesitan leer el mismo dato en el heap.
 Ejemplo: estructuras de datos compartidas como árboles o grafos, donde
 un mismo nodo puede ser referenciado desde varios lugares.
 
+---
+
+Importante:
+- Rc<T> solo permite acceso **inmutable** al valor que guarda.
+- Si necesitas mutar el dato, debes envolverlo en `RefCell<T>`:
+  Ejemplo: `Rc<RefCell<T>>`
+  Esto te permite mutabilidad controlada en tiempo de ejecución.
+
+---
 
 Se crea un Rc que contiene "hola".
 El String está en el heap.
@@ -130,13 +139,15 @@ Ambos rc1 y rc2 imprimen "hola", porque apuntan al mismo valor y strong_count re
 
 ---
 
-IMPORTANTE recordar que se guarda en el HEAP y esto tiene muchas ventajas.
+IMPORTANTE recordar que se guarda en el HEAP y esto tiene muchas ventajas:
 
 1- Permite manejar datos indeterminados en tamaño.
-2- Permite compartir datos entre diferentes partes de un programa sin necesidad de copiarlos. Por ejemplo,
-cuando una función terminó es posible mantener la información en el heap y seguir usándola.
+2- Permite compartir datos entre diferentes partes de un programa sin necesidad de copiarlos. 
+   Por ejemplo, cuando una función terminó es posible mantener la información en el heap y 
+   seguir usándola.
 
 ***/
+
 
 fn rc_demo() {
     println!("\n--- Rc<T> ---");
@@ -214,18 +225,53 @@ fn arc_demo() {
 /*
 ----------------------------------------------------------- 
  4. RefCell<T>: Mutabilidad interior (runtime borrow check)
------------------------------------------------------------ 
-*/
+-----------------------------------------------------------
 
+Demostración de `RefCell<T>`
+
+`RefCell<T>` permite aplicar el patrón de **interior mutability**, es decir,
+modificar un valor a pesar de que el contenedor en sí no sea mutable.
+
+Diferencia clave: el borrow checker usualmente valida préstamos (`&` y `&mut`)
+en tiempo de compilación, pero `RefCell<T>` traslada esa verificación a **runtime**.
+
+Reglas en runtime:
+- Se permiten múltiples `borrow()` (prestamos inmutables).
+- Solo se permite un `borrow_mut()` (prestamo mutable exclusivo).
+- Si estas reglas se violan, el programa entra en `panic!`.
+
+Casos de uso:
+- Cuando necesitas mutabilidad interior en estructuras con múltiples dueños,
+  por ejemplo `Rc<RefCell<T>>` para representar nodos mutables en árboles o grafos.
+
+En este ejemplo:
+1. Se crea un `RefCell` con el valor 10.
+2. Se toma un préstamo mutable y se imprime.
+3. Se libera el préstamo anterior, y se modifica el valor sumando 5.
+4. Finalmente se pide un préstamo inmutable para leer el resultado.
+
+Output esperado:
+```text
+--- RefCell<T> ---
+dato mut = 10
+dato final = 15
+```
+*/
 fn refcell_demo() {
     println!("\n--- RefCell<T> ---");
-    let data = RefCell::new(10);
+    let data = RefCell::new(10);   // guarda el 10 en el heap
+
     {
-        let mut_ref = data.borrow_mut(); // mut borrow en runtime
+        let mut_ref = data.borrow_mut(); 
+        // pide un préstamo MUTABLE en runtime
         println!("dato mut = {}", mut_ref);
-    }
-    *data.borrow_mut() += 5;
-    println!("dato final = {}", data.borrow());
+    } // mut_ref sale de scope, préstamo se libera
+
+    *data.borrow_mut() += 5; 
+    // nuevo préstamo mut → modifica el valor en el heap
+
+    println!("dato final = {}", data.borrow()); 
+    // préstamo inmutable en runtime → imprime 15
 }
 
 //
