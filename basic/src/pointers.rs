@@ -256,26 +256,178 @@ Output esperado:
 dato mut = 10
 dato final = 15
 ```
+
+
+Ojo: Esto no sería posible solo con Rc<T> o Box<T>.
+
+Con Box<T> el ownership es único → imposible compartir nodos fácilmente.
+Con Rc<T> compartes, pero no puedes mutar.
+Con Rc<RefCell<T>> logras compartir y mutar.
+
 */
-fn refcell_demo() {
-    println!("\n--- RefCell<T> ---");
-    let data = RefCell::new(10);   // guarda el 10 en el heap
+use std::rc::Rc;
+use std::cell::RefCell;
 
-    {
-        let mut_ref = data.borrow_mut(); 
-        // pide un préstamo MUTABLE en runtime
-        println!("dato mut = {}", mut_ref);
-    } // mut_ref sale de scope, préstamo se libera
 
-    *data.borrow_mut() += 5; 
-    // nuevo préstamo mut → modifica el valor en el heap
-
-    println!("dato final = {}", data.borrow()); 
-    // préstamo inmutable en runtime → imprime 15
+struct Node {
+    value: i32,
+    children: Vec<Rc<RefCell<Node>>>,
 }
 
+fn refcell_demo() {
+    // Nodo raíz
+    let root = Rc::new(RefCell::new(Node {
+        value: 1,
+        children: vec![],
+    }));
+
+    // Crear hijos
+    let child1 = Rc::new(RefCell::new(Node {
+        value: 2,
+        children: vec![],
+    }));
+    let child2 = Rc::new(RefCell::new(Node {
+        value: 3,
+        children: vec![],
+    }));
+
+    // Mutar root para agregar hijos
+    root.borrow_mut().children.push(child1.clone());
+    root.borrow_mut().children.push(child2.clone());
+
+    // Ahora child1 y child2 existen en dos lugares:
+    // - dentro de root.children
+    // - en nuestras variables locales
+    println!("Árbol raíz: {:?}", root);
+}
+
+
+/*
+----------------------------------------------------------- 
+ 5. Mutex<T> Mutabilidad en multithreading
+-----------------------------------------------------------
+
+Mutex<T> permite mutabilidad segura en entornos multihilo.
+Proporciona un mecanismo de bloqueo para garantizar que solo un hilo
+pueda acceder a los datos en un momento dado.
+
+Funciona de manera similar a `RefCell<T>`, pero está diseñado para entornos multihilo.
+
+
+RefCell<T> = mutabilidad controlada en single-thread.
+Mutex<T> = mutabilidad controlada en multi-thread.
+uno es el "hermano multithread" del otro.
+
+*/
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+fn mutex_demo() {
+    let shared = Arc::new(Mutex::new(0));
+
+    let mut handles = vec![];
+
+    for _ in 0..5 {
+        let s = Arc::clone(&shared);
+        let handle = thread::spawn(move || {
+            let mut num = s.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    println!("Resultado final = {}", *shared.lock().unwrap());
+}
+
+
+/***
+-----------------------------------------------------------
+   6. RwLock<T>: Bloqueo de Lectura/Escritura
+-----------------------------------------------------------
+
+¿Qué es RwLock<T>?
+Es un "Read-Write Lock".  
+Permite que varios hilos lean el mismo dato al mismo tiempo,
+pero SOLO un hilo puede escribir (y cuando escribe, nadie más puede acceder).
+
+Diferencias clave:
+- Mutex<T>: solo un acceso a la vez (lectura o escritura).
+- RwLock<T>: múltiples lecturas concurrentes, pero escritura exclusiva.
+
+-----------------------------------------------------------
+
+Ejemplo mental:
+
+Arc ─┐
+     ├──> RwLock ───> valor (ej. i32)
+Arc ─┘
+
+* Varios hilos pueden hacer `.read()` al mismo tiempo.
+* Cuando un hilo hace `.write()`, bloquea todas las lecturas
+  y escrituras hasta terminar.
+
+-----------------------------------------------------------
+
+¿Cuándo usar RwLock<T>?
+
+Cuando el patrón de acceso es:
+- Muchas lecturas concurrentes.
+- Pocas escrituras.
+
+Ejemplo típico: cachés, configuraciones compartidas, tablas de datos
+que rara vez cambian pero se leen constantemente.
+
+-----------------------------------------------------------
+
+Advertencias:
+- Coordinar lectores y escritores tiene un costo extra.
+- Si hay muchas escrituras, puede ser más lento que Mutex<T>.
+- Al igual que Mutex, se puede caer en "deadlocks" si no se usa bien.
+
+***/
+
+
+use std::sync::{Arc, RwLock};
+use std::thread;
+
+fn rwlock_demo() {
+    // Compartido entre hilos
+    let data = Arc::new(RwLock::new(0));
+
+    let mut handles = vec![];
+
+    // Escritor
+    {
+        let data = Arc::clone(&data);
+        handles.push(thread::spawn(move || {
+            let mut num = data.write().unwrap(); // bloqueo exclusivo
+            *num += 10;
+            println!("Escritor: valor actualizado a {}", *num);
+        }));
+    }
+
+    // Lectores
+    for i in 0..3 {
+        let data = Arc::clone(&data);
+        handles.push(thread::spawn(move || {
+            let num = data.read().unwrap(); // bloqueo compartido
+            println!("Lector {}: valor actual = {}", i, *num);
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
+
+
 //
-// 5. Raw pointers (punteros crudos, inseguros)
+// 7. Raw pointers (punteros crudos, inseguros)
 //
 fn raw_pointers_demo() {
     println!("\n--- Raw pointers (unsafe) ---");
@@ -291,7 +443,7 @@ fn raw_pointers_demo() {
 }
 
 //
-// 6. Box + trait objects (dinamismo en heap)
+// 8. Box + trait objects (dinamismo en heap)
 //
 trait Animal {
     fn sound(&self);
