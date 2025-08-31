@@ -1,6 +1,7 @@
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::cell::RefCell;
+use std::thread;
 
 /*
 -----------------------------------------------------------
@@ -265,10 +266,6 @@ Con Rc<T> compartes, pero no puedes mutar.
 Con Rc<RefCell<T>> logras compartir y mutar.
 
 */
-use std::rc::Rc;
-use std::cell::RefCell;
-
-
 struct Node {
     value: i32,
     children: Vec<Rc<RefCell<Node>>>,
@@ -298,7 +295,7 @@ fn refcell_demo() {
     // Ahora child1 y child2 existen en dos lugares:
     // - dentro de root.children
     // - en nuestras variables locales
-    println!("Árbol raíz: {:?}", root);
+    // println!("Árbol raíz: {:?}", root);
 }
 
 
@@ -319,8 +316,7 @@ Mutex<T> = mutabilidad controlada en multi-thread.
 uno es el "hermano multithread" del otro.
 
 */
-use std::sync::{Arc, Mutex};
-use std::thread;
+
 
 fn mutex_demo() {
     let shared = Arc::new(Mutex::new(0));
@@ -389,10 +385,6 @@ Advertencias:
 - Al igual que Mutex, se puede caer en "deadlocks" si no se usa bien.
 
 ***/
-
-
-use std::sync::{Arc, RwLock};
-use std::thread;
 
 fn rwlock_demo() {
     // Compartido entre hilos
