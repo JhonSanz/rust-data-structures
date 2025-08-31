@@ -1,4 +1,4 @@
-pub fn vector_demo() {
+fn vector_demo() {
     /*
     ----------------------------------------
         Metodos basicos
@@ -129,12 +129,13 @@ pub fn vector_demo() {
 }
 
 
-pub fn string_demo() {
+fn string_demo() {
     /*
     ----------------------------------------
         Métodos básicos
     ----------------------------------------
     */
+    println!("---------------------------------------------------------------");
 
     // Crear un String vacío
     let mut s1 = String::new();
@@ -157,6 +158,7 @@ pub fn string_demo() {
     // Concatenar
     s2.push_str(" 🦀");
     println!("s2 concatenado: {}", s2);
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -179,6 +181,7 @@ pub fn string_demo() {
     // Copiar un slice
     let copia = s4[0..5].to_string();
     println!("Copia del slice: {}", copia);
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -201,6 +204,7 @@ pub fn string_demo() {
     for b in s5.bytes() {
         println!("{}", b);
     }
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -211,6 +215,7 @@ pub fn string_demo() {
     let mut s6 = String::from("Hola");
     s6.push('!');
     println!("Mutado: {}", s6);
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -228,6 +233,7 @@ pub fn string_demo() {
     }
 
     // println!("{}", s7); // ❌ ERROR: ya fue movido
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -243,6 +249,7 @@ pub fn string_demo() {
     let s10 = s8 + &s9; // s8 se mueve, s9 se presta
 
     println!("Concatenado con +: {}", s10);
+    println!("---------------------------------------------------------------");
 
     /*
     ----------------------------------------
@@ -253,4 +260,11 @@ pub fn string_demo() {
     let nombre = "Jhon";
     let saludo = format!("Hola, {}!", nombre); // no mueve nada
     println!("{}", saludo);
+    println!("---------------------------------------------------------------");
+}
+
+
+pub fn builtin_functions_tour() {
+    // vector_demo();
+    string_demo();
 }
