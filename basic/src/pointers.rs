@@ -3,6 +3,35 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::cell::RefCell;
 use std::thread;
 
+
+
+/**
+-----------------------------------------------------------
+   -1. El HEAP y el STACK
+-----------------------------------------------------------
+
+En rust tenemos dos maneras de almacenar información en memoria. Dependiendo de las
+características de lo que queramos guardar elegimos una u otra
+
+1. Para datos con tamaño conocido y de corta duración se usa el STACK
+2. Para datos de tamaño variable o desconocido usamos el HEAP
+
+
+- El stack es muy rápido ya que se almacenan cosas predecibles en tamaño y acceso
+- El heap es lento porque se hacen operaciones complejas de búsqueda y asignación de memoria
+
+La ventaja de rust es que no tiene garbage collector, sino que utiliza sistemas
+de ownership para evitar fugas de memoria
+
+| Característica     | **STACK**         | **HEAP**            |
+| ------------------ | ----------------- | ------------------  |
+| **Velocidad**      | Rápido            | Lento               |
+| **Tamaño**         | Fijo              | Variable            |
+| **Gestión**        | Automática        | Puntero + Ownership |
+| **Almacenamiento** | Valores           | Punteros a valores  |
+| **Uso**            | Datos predecibles | Datos dinámicos     |
+*/
+
 /*
 -----------------------------------------------------------
    0. Variables y punteros básicos
@@ -83,6 +112,22 @@ fn box_demo() {
     let bx = Box::new(99);
     let y = &*bx;
     println!("Box contiene {} {:p}", bx, y);
+
+    /*
+    ---------------------
+        IMPORTANTE
+    ---------------------
+
+    Box<T> es un tipo de puntero inteligente que asigna memoria en el Heap y devuelve 
+    un puntero a esa memoria. La variable Box en sí misma vive en el Stack.
+
+    Por lo cual es posible crear un puntero mutable y editar el valor dentro del Box
+    */
+
+
+    let mut b = Box::new(5); // La variable 'b' y su contenido son mutables
+    *b = 10; // Ahora podemos cambiar el valor dentro de la caja
+    println!("El valor en la caja es: {}", b); // Muestra "El valor en la caja es: 10"
 }
 
 /***
@@ -225,79 +270,87 @@ fn arc_demo() {
 
 /*
 ----------------------------------------------------------- 
- 4. RefCell<T>: Mutabilidad interior (runtime borrow check)
+ 4. RefCell<T> y Rc<T>: Mutabilidad Interior y Múltiples Dueños
 -----------------------------------------------------------
 
-Demostración de `RefCell<T>`
+Demostración de `Rc<RefCell<T>>`
 
-`RefCell<T>` permite aplicar el patrón de **interior mutability**, es decir,
-modificar un valor a pesar de que el contenedor en sí no sea mutable.
+`RefCell<T>` permite el patrón de **interior mutability**, es decir, modificar
+un valor que está en un contenedor inmutable. `Rc<T>` permite que un dato tenga
+**múltiples dueños**. Juntos, `Rc<RefCell<T>>` resuelven el problema de tener
+un dato que es compartido pero que también necesita ser modificado.
 
-Diferencia clave: el borrow checker usualmente valida préstamos (`&` y `&mut`)
-en tiempo de compilación, pero `RefCell<T>` traslada esa verificación a **runtime**.
+Diferencia clave: el borrow checker de Rust usualmente valida los préstamos
+(& y &mut) en **tiempo de compilación**. `RefCell<T>` traslada esa verificación
+a **tiempo de ejecución (runtime)**.
 
-Reglas en runtime:
-- Se permiten múltiples `borrow()` (prestamos inmutables).
-- Solo se permite un `borrow_mut()` (prestamo mutable exclusivo).
+Reglas de préstamos en runtime:
+- Se permiten múltiples `borrow()` (préstamos inmutables).
+- Solo se permite un `borrow_mut()` (préstamo mutable exclusivo).
 - Si estas reglas se violan, el programa entra en `panic!`.
 
 Casos de uso:
-- Cuando necesitas mutabilidad interior en estructuras con múltiples dueños,
-  por ejemplo `Rc<RefCell<T>>` para representar nodos mutables en árboles o grafos.
+- Cuando necesitas que un dato sea compartido por múltiples partes del programa
+  y que al mismo tiempo pueda ser modificado.
+- Un ejemplo común son las estructuras de datos como grafos o árboles, donde un
+  nodo puede tener múltiples referencias y necesitar ser actualizado.
 
-En este ejemplo:
-1. Se crea un `RefCell` con el valor 10.
-2. Se toma un préstamo mutable y se imprime.
-3. Se libera el préstamo anterior, y se modifica el valor sumando 5.
-4. Finalmente se pide un préstamo inmutable para leer el resultado.
+Comparación con otros tipos de punteros inteligentes:
+- **`Box<T>`:** El ownership es único, por lo que no se pueden compartir referencias.
+- **`Rc<T>`:** Permite compartir la propiedad, pero no mutar el valor que contiene.
+- **`Rc<RefCell<T>>`:** Logra ambas cosas, compartir y mutar el valor.
 
-Output esperado:
-```text
---- RefCell<T> ---
-dato mut = 10
-dato final = 15
-```
-
-
-Ojo: Esto no sería posible solo con Rc<T> o Box<T>.
-
-Con Box<T> el ownership es único → imposible compartir nodos fácilmente.
-Con Rc<T> compartes, pero no puedes mutar.
-Con Rc<RefCell<T>> logras compartir y mutar.
+En este ejemplo, un simple contador (`i32`) es envuelto en `Rc<RefCell<T>>`.
+Esto permite que:
+1. El contador sea compartido por la variable `contador` y `contador_clonado`.
+2. Se pueda mutar (`borrow_mut()`) el valor del contador desde cualquiera de las dos variables.
 
 */
-struct Node {
-    value: i32,
-    children: Vec<Rc<RefCell<Node>>>,
-}
 
 fn refcell_demo() {
-    // Nodo raíz
-    let root = Rc::new(RefCell::new(Node {
-        value: 1,
-        children: vec![],
-    }));
+    // Se crea un `Rc<RefCell<i32>>` con un amount inicial de 0.
+    // El dato `0` vive en el Heap. `amount` es la primera referencia.
+    let amount = Rc::new(RefCell::new(0));
+    println!("El valor original de amount es: {}", *amount.borrow());
 
-    // Crear hijos
-    let child1 = Rc::new(RefCell::new(Node {
-        value: 2,
-        children: vec![],
-    }));
-    let child2 = Rc::new(RefCell::new(Node {
-        value: 3,
-        children: vec![],
-    }));
+    println!("--- Contamos referencias y manipulamos el dato ---");
+    println!("El amount original tiene {} dueños.", Rc::strong_count(&amount));
 
-    // Mutar root para agregar hijos
-    root.borrow_mut().children.push(child1.clone());
-    root.borrow_mut().children.push(child2.clone());
+    // Primer scope: se clona el amount y se modifica dentro de un bloque.
+    {
+        println!("\n-> Entrando en el primer scope...");
+        let amount_clon1 = Rc::clone(&amount);
+        println!("Ahora tenemos {} dueños.", Rc::strong_count(&amount));
 
-    // Ahora child1 y child2 existen en dos lugares:
-    // - dentro de root.children
-    // - en nuestras variables locales
-    // println!("Árbol raíz: {:?}", root);
+        // Obtenemos un préstamo mutable y modificamos el valor.
+        *amount_clon1.borrow_mut() += 1;
+        println!("El valor del amount es: {}", *amount_clon1.borrow());
+        
+        // El `amount_clon1` se libera aquí al final del scope,
+        // pero el dato en el Heap sigue vivo porque `amount` aún existe.
+    } // `amount_clon1` se libera
+
+    println!("\n-> Saliendo del primer scope...");
+    println!("Volvemos a tener {} dueño(s).", Rc::strong_count(&amount));
+    println!("El valor del amount sigue siendo: {}", *amount.borrow());
+
+    // Segundo scope: se clona de nuevo y se modifica.
+    {
+        println!("\n-> Entrando en el segundo scope...");
+        let amount_clon2 = Rc::clone(&amount);
+        println!("De nuevo {} dueños.", Rc::strong_count(&amount));
+
+        *amount_clon2.borrow_mut() += 5;
+        println!("Ahora el valor del amount es: {}", *amount_clon2.borrow());
+    } // `amount_clon2` se libera
+
+    println!("\n-> Saliendo del segundo scope...");
+    println!("Volvemos a tener {} dueño(s).", Rc::strong_count(&amount));
+    println!("El valor final del amount es: {}", *amount.borrow());
+
+    // La variable `amount` se libera aquí.
+    // Ahora que la última referencia ha desaparecido, el dato en el Heap se limpia.
 }
-
 
 /*
 ----------------------------------------------------------- 
@@ -461,9 +514,10 @@ fn trait_objects_demo() {
 
 pub fn pointers_tour() {
     // pointers_demo();
-    rc_demo();
+    // box_demo()
+    // rc_demo();
     // arc_demo();
-    // refcell_demo();
+    refcell_demo();
     // raw_pointers_demo();
     // trait_objects_demo();
 }
