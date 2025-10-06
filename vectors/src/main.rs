@@ -2,6 +2,22 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 
+
+/*
+Monomorphization (Monomorfización)
+
+Cuando se usa un tipo genérico `T` en Rust, el compilador genera versiones específicas del código para cada tipo concreto que se usa. Este proceso se llama monomorfización.
+
+de esa manera, si tienes una función genérica como:
+fn foo<T>(x: T) { ... }
+y la llamas con diferentes tipos:
+foo(5);        // T es i32
+foo(3.14);     // T es f64
+El compilador genera dos versiones de `foo`:
+fn foo_i32(x: i32) { ... }
+fn foo_f64(x: f64) { ... }
+Esto permite que el código genérico sea tan eficiente como el código específico para cada tipo, ya que el compilador puede optimizar cada versión generada. Además estas versiones específicas se crean en tiempo de compilación, no en tiempo de ejecución, lo que significa que no hay sobrecarga adicional al usar genéricos.
+*/
 pub struct MyVec<T> {
     ptr: NonNull<MaybeUninit<T>>,
     capacity: usize,
