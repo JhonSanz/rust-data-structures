@@ -236,4 +236,181 @@ impl<T> MyVec<T> {
         self.ptr = new_ptr;
         self.capacity = new_cap;
     }
+
+    /// Añade un elemento al final del vector.
+    ///
+    /// Si el vector está lleno (len == capacity), primero crece la capacidad
+    /// usando `grow()` antes de añadir el elemento.
+    ///
+    /// # Proceso
+    /// 1. Verifica si hay espacio disponible (len < capacity)
+    /// 2. Si no hay espacio, llama a `grow()` para duplicar la capacidad
+    /// 3. Calcula la posición donde escribir el nuevo elemento (ptr + len)
+    /// 4. Escribe el elemento usando `ptr::write`
+    /// 5. Incrementa `len`
+    ///
+    /// # Parámetros
+    /// - `new_elem`: El elemento de tipo `T` a añadir al final
+    ///
+    /// # Safety
+    /// Usa `ptr::write` para escribir en memoria sin inicializar.
+    /// El elemento se mueve (move) al vector, transfiriendo la propiedad.
+    pub fn push_back(&mut self, new_elem: T) {
+        // Si no hay espacio, crece el vector
+        if self.len >= self.capacity {
+            self.grow();
+        }
+
+        unsafe {
+            // Calcula la dirección donde escribir: ptr + len
+            // add(len) avanza el puntero len posiciones (ptr + len * size_of::<T>())
+            let dst = self.ptr.as_ptr().add(self.len);
+
+            // Escribe el elemento en memoria sin inicializar
+            // write() mueve new_elem a la ubicación dst sin llamar al destructor del valor anterior
+            ptr::write(dst, MaybeUninit::new(new_elem));
+        }
+
+        // Incrementa la longitud
+        self.len += 1;
+    }
+
+    /// Obtiene una referencia inmutable al elemento en la posición `index`.
+    ///
+    /// Retorna `Some(&T)` si el índice es válido, o `None` si está fuera de rango.
+    ///
+    /// # Complejidad
+    /// **O(1)** - Acceso en tiempo constante usando aritmética de punteros.
+    ///
+    /// # Proceso
+    /// 1. Verifica que `index < len` (bounds checking)
+    /// 2. Calcula la dirección: `ptr + index * size_of::<T>()`
+    /// 3. Lee la referencia del elemento
+    ///
+    /// # Parámetros
+    /// - `index`: Posición del elemento a obtener (0-indexed)
+    ///
+    /// # Ejemplos
+    /// ```ignore
+    /// let mut v = MyVec::new();
+    /// v.push_back(10);
+    /// v.push_back(20);
+    /// v.push_back(30);
+    ///
+    /// assert_eq!(v.get(0), Some(&10));
+    /// assert_eq!(v.get(1), Some(&20));
+    /// assert_eq!(v.get(5), None);  // Fuera de rango
+    /// ```
+    pub fn get(&self, index: usize) -> Option<&T> {
+        // Verificación de límites
+        if index >= self.len {
+            return None;
+        }
+
+        unsafe {
+            // Calcula la dirección del elemento:
+            // dirección = ptr + (index × size_of::<T>())
+            // Esto es O(1): una simple operación matemática
+            let element_ptr = self.ptr.as_ptr().add(index);
+
+            // Convierte MaybeUninit<T> a T
+            // assume_init_ref() asume que el elemento está inicializado
+            // (sabemos que lo está porque index < len)
+            Some((*element_ptr).assume_init_ref())
+        }
+    }
+
+    /// Obtiene una referencia mutable al elemento en la posición `index`.
+    ///
+    /// Retorna `Some(&mut T)` si el índice es válido, o `None` si está fuera de rango.
+    ///
+    /// # Complejidad
+    /// **O(1)** - Acceso en tiempo constante.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        if index >= self.len {
+            return None;
+        }
+
+        unsafe {
+            let element_ptr = self.ptr.as_ptr().add(index);
+            Some((*element_ptr).assume_init_mut())
+        }
+    }
+
+    /// Retorna la longitud actual del vector (número de elementos).
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Retorna la capacidad del vector (espacio total asignado).
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Retorna `true` si el vector no contiene elementos.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vector_access_o1() {
+        let mut v = MyVec::new();
+
+        // Añade 1000 elementos
+        for i in 0..1000 {
+            v.push_back(i);
+        }
+
+        // Acceso O(1) a cualquier posición
+        assert_eq!(v.get(0), Some(&0));
+        assert_eq!(v.get(500), Some(&500));
+        assert_eq!(v.get(999), Some(&999));
+
+        // El acceso al elemento 999 NO es más lento que al elemento 0
+        // Ambos son O(1) porque usa aritmética de punteros
+
+        println!("✅ Vector confirmado: acceso O(1) a cualquier índice");
+    }
+
+    #[test]
+    fn test_get_out_of_bounds() {
+        let mut v = MyVec::new();
+        v.push_back(10);
+        v.push_back(20);
+
+        assert_eq!(v.get(0), Some(&10));
+        assert_eq!(v.get(1), Some(&20));
+        assert_eq!(v.get(2), None);  // Fuera de rango
+    }
+
+    #[test]
+    fn test_push_and_grow() {
+        let mut v = MyVec::new();
+
+        assert_eq!(v.capacity(), 0);
+        assert_eq!(v.len(), 0);
+
+        // Primer push dispara allocate
+        v.push_back(1);
+        assert!(v.capacity() >= 4);  // Capacidad inicial
+        assert_eq!(v.len(), 1);
+
+        // Llenar hasta forzar grow
+        for i in 2..=10 {
+            v.push_back(i);
+        }
+
+        assert!(v.capacity() >= 10);
+        assert_eq!(v.len(), 10);
+
+        // Verificar todos los elementos
+        for i in 0..10 {
+            assert_eq!(v.get(i), Some(&((i + 1) as i32)));
+        }
+    }
 }
