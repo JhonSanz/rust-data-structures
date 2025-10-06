@@ -1,6 +1,6 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::mem::MaybeUninit;
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
 
 /*
@@ -113,6 +113,17 @@ impl<T> MyVec<T> {
     Esto le dice al allocador: "Dame memoria de X bytes que empiece en una dirección múltiplo de Y"
 
     */
+    /// Asigna un nuevo bloque de memoria para `cap` elementos.
+    ///
+    /// Retorna un `NonNull` apuntando al nuevo bloque de memoria sin inicializar.
+    /// Esta es una función auxiliar usada por `allocate` y `grow`.
+    fn allocate_raw(cap: usize) -> NonNull<MaybeUninit<T>> {
+        assert!(cap > 0);
+        let layout = Layout::array::<MaybeUninit<T>>(cap).unwrap();
+        let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
+        NonNull::new(raw_ptr).expect("allocation failed")
+    }
+
     fn allocate(&mut self, cap: usize) {
         assert!(cap > 0);
 
@@ -134,16 +145,16 @@ impl<T> MyVec<T> {
 
         ---
 
-        // ✅ Con Layout::array (SEGURO)
+        ✅ Con Layout::array (SEGURO)
         let layout = Layout::array::<MaybeUninit<T>>(cap).unwrap();
         let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
 
-        // ❌ Sin Layout (NO COMPILA - alloc() necesita un Layout)
+        ❌ Sin Layout (NO COMPILA - alloc() necesita un Layout)
         let size = std::mem::size_of::<MaybeUninit<T>>() * cap;
         let align = std::mem::align_of::<MaybeUninit<T>>();
         let raw_ptr = unsafe { alloc(size, align) }; // ❌ Error: alloc toma Layout, no (size, align)
 
-        // 🟡 Creando Layout manualmente (POSIBLE pero innecesario)
+        🟡 Creando Layout manualmente (POSIBLE pero innecesario)
         let size = std::mem::size_of::<MaybeUninit<T>>()
             .checked_mul(cap)
             .expect("overflow");
@@ -152,9 +163,77 @@ impl<T> MyVec<T> {
         let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
 
         */
-        let layout = Layout::array::<MaybeUninit<T>>(cap).unwrap();
-        let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
-        self.ptr = NonNull::new(raw_ptr).expect("allocation failed");
+        self.ptr = Self::allocate_raw(cap);
         self.capacity = cap;
+    }
+
+    /*
+    Aumenta la capacidad del vector cuando se queda sin espacio.
+
+    Duplica la capacidad actual (o usa 4 si la capacidad es 0), asigna un nuevo
+    bloque de memoria, copia todos los elementos existentes al nuevo bloque,
+    y libera el bloque viejo.
+
+    # Proceso
+        1. Calcula la nueva capacidad (doble de la actual, o 4 si es 0)
+        2. Asigna un nuevo bloque de memoria con la nueva capacidad
+        3. Copia todos los elementos del bloque viejo al nuevo usando `ptr::copy_nonoverlapping`
+        4. Libera el bloque viejo con `dealloc` (si la capacidad vieja > 0)
+        5. Actualiza el puntero y capacidad a los nuevos valores
+
+    # Panics
+        - Si la asignación del nuevo bloque falla
+        - Si el cálculo de la nueva capacidad causa overflow
+
+    # Safety
+        - Usa operaciones unsafe para copiar memoria y liberar el bloque viejo.
+        - Los elementos copiados mantienen su estado de inicialización (MaybeUninit).
+    */
+    fn grow(&mut self) {
+        // Calcula nueva capacidad: duplica la actual, o 4 si es 0
+        let new_cap = if self.capacity == 0 {
+            4
+        } else {
+            self.capacity * 2
+        };
+
+        // Asigna el nuevo bloque de memoria reutilizando allocate_raw
+        let new_ptr = Self::allocate_raw(new_cap);
+
+        // Copia los elementos del bloque viejo al nuevo (si hay elementos)
+        if self.capacity > 0 {
+            unsafe {
+                // copy_nonoverlapping copia `len` elementos de src a dst
+                // Es seguro porque los bloques no se superponen
+
+                /*
+                Aqui es importante mencionar que podríamos hacer un loop manualmente
+                para copiar cada elemento pero en terminos de rendimiento
+                ptr::copy_nonoverlapping es mucho más rápido porque hace todo en
+                paralelo a nivel de memoria.
+
+
+                for i in 0..self.len {
+                    El compilador debe:
+                    - Verificar el índice i en cada iteración
+                    - Calcular offset (i * size_of::<T>())
+                    - Copiar 1 elemento a la vez
+                }
+                */
+                ptr::copy_nonoverlapping(
+                    self.ptr.as_ptr(),  // src: puntero al bloque viejo
+                    new_ptr.as_ptr(),   // dst: puntero al bloque nuevo
+                    self.len,           // count: número de elementos a copiar
+                );
+
+                // Libera el bloque viejo
+                let old_layout = Layout::array::<MaybeUninit<T>>(self.capacity).unwrap();
+                dealloc(self.ptr.as_ptr() as *mut u8, old_layout);
+            }
+        }
+
+        // Actualiza el puntero y capacidad
+        self.ptr = new_ptr;
+        self.capacity = new_cap;
     }
 }
