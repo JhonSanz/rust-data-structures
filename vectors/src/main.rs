@@ -119,14 +119,6 @@ impl<T> MyVec<T> {
     /// Esta es una función auxiliar usada por `allocate` y `grow`.
     fn allocate_raw(cap: usize) -> NonNull<MaybeUninit<T>> {
         assert!(cap > 0);
-        let layout = Layout::array::<MaybeUninit<T>>(cap).unwrap();
-        let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
-        NonNull::new(raw_ptr).expect("allocation failed")
-    }
-
-    fn allocate(&mut self, cap: usize) {
-        assert!(cap > 0);
-
         /*
         1. Calcula size y alignment
             Layout::array::<T>(cap)
@@ -161,11 +153,15 @@ impl<T> MyVec<T> {
         let align = std::mem::align_of::<MaybeUninit<T>>();
         let layout = Layout::from_size_align(size, align).unwrap();
         let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
-
         */
-        self.ptr = Self::allocate_raw(cap);
-        self.capacity = cap;
+
+        let layout = Layout::array::<MaybeUninit<T>>(cap).unwrap();
+        let raw_ptr = unsafe { alloc(layout) } as *mut MaybeUninit<T>;
+        NonNull::new(raw_ptr).expect("allocation failed")
     }
+
+    // Nota: No necesitamos una función `allocate` separada porque `grow()`
+    // maneja tanto la asignación inicial como el crecimiento posterior.
 
     /*
     Aumenta la capacidad del vector cuando se queda sin espacio.
