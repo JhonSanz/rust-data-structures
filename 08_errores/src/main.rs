@@ -90,6 +90,47 @@ fn main() {
     panics();
 }
 
+/*
+-----------------------------------------------------------
+   Result<T, E> y el operador ?
+-----------------------------------------------------------
+
+¿Qué es Result?
+Un enum normal y corriente con dos variantes:
+
+enum Result<T, E> {
+    Ok(T),    // salió bien y aquí está el valor (de tipo T)
+    Err(E),   // salió mal y aquí está el error (de tipo E)
+}
+
+El error forma parte del TIPO de la función: al leer
+`fn parse(..) -> Result<i32, ParseIntError>` ya sabes que puede
+fallar y cómo. No hay excepciones escondidas.
+
+-----------------------------------------------------------
+
+¿Qué hace el operador ? exactamente?
+Esta línea:
+
+    let x = texto.parse::<i32>()?;
+
+es una abreviatura de:
+
+    let x = match texto.parse::<i32>() {
+        Ok(valor) => valor,                    // sigue con el valor
+        Err(e) => return Err(From::from(e)),   // SALE de la función con el error
+    };
+
+Fíjate en el `From::from(e)`: ? CONVIERTE el error al tipo de error
+de tu función, si existe un `impl From<ErrorOrigen> for TuError`.
+Por eso con Box<dyn Error> puedes mezclar errores de distinto tipo.
+
+IMPORTANTE:
+- ? solo se puede usar dentro de funciones que devuelven Result (u
+  Option). En main, haz que main devuelva Result.
+- Es el equivalente a `if err != nil { return err }` de Go, en un carácter.
+*/
+
 // `?` : si es Ok(v) devuelve v; si es Err(e), RETORNA Err(e.into()) de la función.
 fn sumar_textos(a: &str, b: &str) -> Result<i32, ParseIntError> {
     let x = a.trim().parse::<i32>()?;
@@ -129,6 +170,23 @@ fn metodos_result() {
     // unwrap()/expect() hacen panic si hay error. Úsalos en tests, prototipos,
     // o cuando un error sería un bug (y documenta por qué con expect).
 }
+
+/*
+-----------------------------------------------------------
+   Errores propios: por qué un enum
+-----------------------------------------------------------
+
+Un enum con una variante por cada cosa que puede fallar:
+- quien llama puede hacer `match` y reaccionar distinto a cada caso
+  (reintentar, pedir otro dato, mostrar un mensaje...)
+- el compilador avisa si añades una variante y alguien no la trata
+- cada variante lleva SUS datos (qué cuenta, cuánto saldo faltaba)
+
+Para que sea un error "de verdad" implementa dos traits:
+- Display → el mensaje para humanos ("saldo insuficiente: ...")
+- Error   → lo marca como error estándar; con `source()` puede decir
+            qué otro error lo causó (la CADENA de causas)
+*/
 
 // --- Error propio: un enum con una variante por cada caso ---------------------
 #[derive(Debug, PartialEq)]
@@ -230,6 +288,28 @@ fn leer_puerto(cfg: &str) -> Result<u16, ErrorConfig> {
         })
 }
 
+/*
+-----------------------------------------------------------
+   Box<dyn Error>: "cualquier error"
+-----------------------------------------------------------
+
+Box<dyn Error> es un puntero (Box) a CUALQUIER tipo que implemente
+el trait Error (dyn: despacho dinámico, módulo 07).
+
+    Result<(), Box<dyn Error>>
+                   │
+                   └─▶ puede ser un ParseIntError, un io::Error,
+                       un ErrorBanco... lo que sea
+
+| Tipo de error      | Ventaja                     | Ideal para            |
+| ------------------ | --------------------------- | --------------------- |
+| enum propio        | quien llama puede hacer match | BIBLIOTECAS          |
+| Box<dyn Error>     | cómodo, cualquier error vale | APLICACIONES, main   |
+
+En proyectos reales: `thiserror` genera los enums propios y `anyhow`
+es un Box<dyn Error> mejorado (con contexto: "al leer config.toml: ...").
+*/
+
 // Box<dyn Error>: "cualquier error". Cómodo en main o en aplicaciones, donde
 // solo quieres propagar y mostrar. `?` convierte automáticamente cualquier
 // tipo que implemente Error, gracias a `impl From<E: Error> for Box<dyn Error>`.
@@ -249,6 +329,24 @@ fn primer_par_doble(v: &[i32]) -> Option<i32> {
     let par = v.iter().find(|&&x| x % 2 == 0)?;
     Some(par * 2)
 }
+
+/*
+-----------------------------------------------------------
+   panic! vs Result: ¿cuándo usar cada uno?
+-----------------------------------------------------------
+
+| Situación                                   | Usa      | Ejemplo                |
+| ------------------------------------------- | -------- | ---------------------- |
+| Algo que PUEDE pasar en uso normal          | Result   | archivo no existe, input inválido |
+| Algo que NUNCA debería pasar (un BUG)       | panic!   | índice fuera de rango, invariante rota |
+
+Un panic DETIENE el hilo actual: "desenrolla" la pila (ejecutando los
+Drop de cada valor) y, si es el hilo principal, termina el programa.
+
+unwrap() y expect("...") convierten un Err/None en panic. Úsalos solo
+cuando un fallo sería un bug, o en tests y prototipos. Prefiere
+expect con un mensaje que explique POR QUÉ no puede fallar.
+*/
 
 fn panics() {
     // Un panic desenrolla la pila del hilo (ejecutando los Drop) y termina el

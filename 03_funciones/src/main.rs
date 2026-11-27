@@ -116,6 +116,63 @@ fn funciones_como_valores() {
     );
 }
 
+/*
+-----------------------------------------------------------
+   CLOSURES: funciones que "recuerdan" su entorno
+-----------------------------------------------------------
+
+¿Qué es un closure?
+Una función anónima (sin nombre) que se puede guardar en una variable
+y que puede usar variables del sitio donde se creó. A eso se le llama
+CAPTURAR el entorno.
+
+let factor = 2;
+let doblar = |x| x * factor;     // captura `factor`
+doblar(21);                      // → 42
+
+        ┌──────── closure `doblar` ────────┐
+        │  código:   |x| x * factor        │
+        │  captura:  &factor ──────────────┼──▶ factor [ 2 ]
+        └──────────────────────────────────┘
+
+Por dentro, un closure es un struct anónimo que guarda lo que captura
+y un método para ejecutarlo. Por eso puede llevar estado.
+
+-----------------------------------------------------------
+   ¿Cómo captura? Los tres traits Fn
+-----------------------------------------------------------
+
+El compilador mira QUÉ HACE el closure con lo que captura y elige
+la forma de captura menos exigente:
+
+| Trait  | Qué hace con lo capturado | Captura como | ¿Cuántas veces se llama? |
+| ------ | ------------------------- | ------------ | ------------------------ |
+| Fn     | Solo lo LEE               | &T           | Las que quieras          |
+| FnMut  | Lo MODIFICA               | &mut T       | Las que quieras (necesita `let mut`) |
+| FnOnce | Lo CONSUME (lo mueve)     | T (dueño)    | UNA sola vez             |
+
+Ejemplos:
+    |x| x * factor           → Fn      (lee factor)
+    |x| total += x           → FnMut   (modifica total)
+    || mensaje               → FnOnce  (devuelve mensaje: lo entrega, ya no lo tiene)
+
+Son "matrioskas": todo Fn es también FnMut, y todo FnMut es también
+FnOnce. Por eso una función que pide `impl FnOnce` acepta cualquier
+closure, y una que pide `impl Fn` es la más exigente.
+
+-----------------------------------------------------------
+   move: llevarse las cosas en vez de pedirlas prestadas
+-----------------------------------------------------------
+
+`move |x| ...` obliga al closure a ser DUEÑO de lo que captura
+(lo mueve dentro). Hace falta cuando el closure va a vivir más que
+las variables que usa: al devolverlo de una función (ver
+`multiplicador`) o al enviarlo a otro hilo (módulo 12).
+
+OJO: `move` decide CÓMO se captura, no qué trait implementa. Un
+closure con `move` que solo lee sigue siendo Fn.
+*/
+
 fn closures() {
     // Un closure es una función anónima que puede CAPTURAR variables del entorno.
     // Sintaxis: |parámetros| expresión   (los tipos se suelen inferir)
@@ -146,6 +203,23 @@ fn closures() {
     palabras.sort_by_key(|p| p.chars().count());
     println!("ordenadas por longitud: {palabras:?}");
 }
+
+/*
+-----------------------------------------------------------
+   ¿Por qué `move` al devolver un closure?
+-----------------------------------------------------------
+
+fn multiplicador(n: i32) -> impl Fn(i32) -> i32 {
+    |x| x * n          // ✗ sin move: el closure guarda &n...
+}                      // ...pero `n` muere AQUÍ, al acabar la función
+
+Sin move:  closure ──▶ &n ──▶ [ memoria del stack ya liberada ] 💥
+Con move:  closure { n: 3 }   ← el closure se lleva su propia copia
+
+`impl Fn(i32) -> i32` en el tipo de retorno significa "devuelvo ALGÚN
+tipo que implementa Fn". Cada closure tiene un tipo único que no se
+puede escribir, así que esta es la forma de devolverlo.
+*/
 
 // Devolver un closure: `impl Fn(...)` = "algún tipo que implementa Fn".
 // `move` hace que el closure se lleve `n` consigo (si no, `n` moriría al salir).

@@ -15,6 +15,36 @@
 use std::fmt;
 use std::ops::{Add, Mul};
 
+/*
+-----------------------------------------------------------
+   ¿Qué es un TRAIT?
+-----------------------------------------------------------
+
+Un trait es un CONTRATO: una lista de métodos que un tipo promete
+tener. "Si eres una Forma, sabes decirme tu área y tu nombre".
+
+trait Forma {                  ← el contrato
+    fn area(&self) -> f64;
+}
+impl Forma for Circulo { ... } ← Circulo firma el contrato
+
+Comparado con otros lenguajes:
+- Interfaces de Go/Java: parecido, pero en Rust la implementación es
+  EXPLÍCITA (`impl Forma for Circulo`), no basta con tener los métodos.
+- Clases: Rust NO tiene herencia. Un trait no guarda datos, solo
+  define comportamiento. Los datos van en structs.
+
+Términos:
+- Método obligatorio: solo se declara (`fn area(&self) -> f64;`).
+- Método por defecto: trae implementación; el tipo puede sobrescribirlo.
+- `Self` (con mayúscula): "el tipo que esté implementando el trait".
+
+REGLA DEL HUÉRFANO (orphan rule):
+Puedes escribir `impl Trait for Tipo` solo si el trait O el tipo son
+de tu crate. No puedes implementar Display (de std) para Vec (de std):
+si dos crates lo hicieran, ¿cuál usaría Rust?
+*/
+
 // -----------------------------------------------------------------------------
 // 1. Definir e implementar un trait
 // -----------------------------------------------------------------------------
@@ -58,6 +88,53 @@ impl Forma for Rectangulo {
         format!("rectángulo {}×{}", self.ancho, self.alto)
     }
 }
+
+/*
+-----------------------------------------------------------
+   Despacho ESTÁTICO vs DINÁMICO
+-----------------------------------------------------------
+
+"Despacho" (dispatch) = decidir QUÉ función concreta se ejecuta
+cuando llamas a `f.area()`. Hay dos maneras:
+
+1) ESTÁTICO:  fn f(x: &impl Forma)   o   fn f<T: Forma>(x: &T)
+   Se decide al COMPILAR. El compilador genera una copia de la función
+   por cada tipo con el que la uses (MONOMORFIZACIÓN):
+
+       tu código:            lo que compila Rust:
+       imprimir(&circulo)    imprimir_para_Circulo(&circulo)
+       imprimir(&rect)       imprimir_para_Rectangulo(&rect)
+
+   + coste cero: es una llamada directa, se puede optimizar (inline)
+   - el binario crece un poco; todos los elementos de una lista deben
+     ser del MISMO tipo
+
+2) DINÁMICO:  fn f(x: &dyn Forma)   o   Box<dyn Forma>
+   Se decide al EJECUTAR, mirando una tabla de funciones (VTABLE).
+   Una referencia `&dyn Forma` es un puntero gordo con DOS punteros:
+
+       &dyn Forma
+       [ ptr datos | ptr vtable ]
+            │            │
+            ▼            ▼
+       Circulo        vtable de Circulo-como-Forma
+       { radio }      [ area   → Circulo::area   ]
+                      [ nombre → Circulo::nombre ]
+                      [ drop, tamaño, alineación  ]
+
+   + una lista puede mezclar tipos: Vec<Box<dyn Forma>>
+   - un salto indirecto por llamada (muy poco, pero no se puede inline)
+
+| Necesito...                                  | Usa          |
+| -------------------------------------------- | ------------ |
+| Una función que sirva para varios tipos      | impl Trait / genéricos |
+| Una colección con tipos DISTINTOS mezclados  | Box<dyn Trait> |
+| Elegir la implementación en ejecución (plugins, config) | dyn Trait |
+
+¿Por qué Box en Vec<Box<dyn Forma>>? Porque Circulo y Rectangulo
+miden distinto, y un Vec necesita elementos del MISMO tamaño. Un Box
+siempre mide lo mismo (un puntero gordo) y deja el dato en el heap.
+*/
 
 // -----------------------------------------------------------------------------
 // 2. Despacho estático vs dinámico
@@ -127,6 +204,26 @@ struct Version {
     menor: u32,
     parche: u32,
 }
+
+/*
+-----------------------------------------------------------
+   Supertraits, blanket impls y tipos asociados
+-----------------------------------------------------------
+
+SUPERTRAIT:  trait Resumible: Display { ... }
+"Para ser Resumible tienes que ser también Display". Dentro del trait
+puedes usar los métodos de Display (como to_string()).
+
+BLANKET IMPL ("implementación manta"):  impl<T: Display> Gritar for T
+Implementa el trait para TODOS los tipos que cumplan la condición, de
+una vez. La std lo usa mucho: todo lo que es Display tiene to_string()
+gracias a `impl<T: Display> ToString for T`.
+
+TIPO ASOCIADO:  type Output;  (en Add, Mul, Iterator::Item...)
+Un tipo que el implementador ELIGE y que forma parte del contrato.
+`impl Add for Vector2 { type Output = Vector2; ... }` dice "sumar dos
+Vector2 da un Vector2".
+*/
 
 // -----------------------------------------------------------------------------
 // 4. Traits genéricos sobre cualquier tipo, y supertraits

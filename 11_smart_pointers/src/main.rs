@@ -55,6 +55,32 @@ fn main() {
     }
 }
 
+/*
+-----------------------------------------------------------
+   1. Box<T> y los tipos recursivos
+-----------------------------------------------------------
+
+(La explicación general de Box, Rc, Arc, RefCell, Mutex y RwLock la
+tienes en estructuras_de_datos/basic/src/pointers.rs. Aquí van los
+casos que no salen allí.)
+
+¿Por qué esto NO compila?
+
+    enum Lista { Nodo(i32, Lista), Fin }
+
+Para reservar memoria, Rust necesita saber cuánto mide una Lista. Pero
+una Lista contiene una Lista, que contiene una Lista... tamaño infinito.
+
+Con Box, el nodo guarda un PUNTERO (tamaño fijo) a la siguiente lista,
+que vive en el heap:
+
+    STACK               HEAP
+    lista [1 | ptr] ──▶ [2 | ptr] ──▶ [3 | ptr] ──▶ [Fin]
+
+Ahora una Lista mide siempre: un i32 + un puntero. Lo mismo pasa en
+árboles y grafos: la recursión pasa por un Box (o un Rc).
+*/
+
 // Lista enlazada: un tipo recursivo necesita tamaño conocido → Box
 #[derive(Debug)]
 enum Lista {
@@ -87,6 +113,26 @@ fn boxes() {
         operaciones.iter().map(|f| f(4)).collect::<Vec<_>>()
     );
 }
+
+/*
+-----------------------------------------------------------
+   2. Deref: qué hace a un tipo "smart pointer"
+-----------------------------------------------------------
+
+Un smart pointer es un struct que:
+1. se comporta como una referencia → implementa Deref (y DerefMut)
+2. hace algo extra al morir        → implementa Drop
+
+Deref define qué devuelve `*x`. Con eso Rust hace DEREF COERCION:
+convierte referencias automáticamente, siguiendo la cadena de Deref
+hasta que el tipo encaje:
+
+    &MiBox<String>  ──Deref──▶  &String  ──Deref──▶  &str
+       (lo que tienes)                               (lo que pide la función)
+
+Por eso puedes pasar un &String donde se pide un &str, o llamar a
+métodos de String directamente sobre un Box<String>.
+*/
 
 // Un smart pointer casero: implementar Deref permite usar `*` y llamar a los
 // métodos del tipo interior directamente ("deref coercion").
@@ -126,6 +172,35 @@ fn rc() {
     // Los datos se liberan cuando el contador llega a 0.
     // Rc da acceso SOLO DE LECTURA. Para modificar, combínalo con RefCell.
 }
+
+/*
+-----------------------------------------------------------
+   3. MUTABILIDAD INTERIOR: Cell y RefCell
+-----------------------------------------------------------
+
+Normalmente, para modificar algo necesitas `&mut`. La mutabilidad
+interior es la excepción controlada: modificar a través de una `&`.
+
+¿Para qué? Cuando el diseño necesita que varios tengan acceso
+compartido y aun así cambiar algo: una caché, un contador de visitas,
+un nodo de un grafo compartido con Rc.
+
+| Tipo        | Para qué tipos | Cómo accedes            | Si rompes las reglas |
+| ----------- | -------------- | ----------------------- | -------------------- |
+| Cell<T>     | Copy (números) | get() / set(): copia    | no puede pasar       |
+| RefCell<T>  | cualquiera     | borrow() / borrow_mut() | PANIC en ejecución   |
+
+RefCell lleva un contador de préstamos en ejecución:
+
+    RefCell { préstamos: 0, valor }
+    .borrow()      → préstamos: +1 lector   (pueden ser varios)
+    .borrow_mut()  → préstamos: escritor    (solo si no hay nadie más)
+    borrow_mut() con un borrow() vivo → panic "already borrowed"
+
+Es la MISMA regla del borrow checker (muchos lectores O un escritor),
+pero comprobada al EJECUTAR en vez de al compilar. Usa try_borrow_mut()
+si prefieres un Result a un panic.
+*/
 
 fn mutabilidad_interior() {
     // Cell<T>: get/set de valores Copy a través de una referencia &
@@ -193,6 +268,36 @@ fn compartido_y_mutable() {
     );
 }
 
+/*
+-----------------------------------------------------------
+   4. Weak<T>: romper ciclos
+-----------------------------------------------------------
+
+Con Rc, un valor se libera cuando su contador "strong" llega a 0.
+Si dos nodos se apuntan con Rc el uno al otro:
+
+    padre ──Rc──▶ hijo
+      ▲             │
+      └─────Rc──────┘
+
+cada uno mantiene vivo al otro: los contadores nunca llegan a 0 y la
+memoria NUNCA se libera (fuga de memoria). Rust no lo impide: no es
+inseguro, solo es un desperdicio.
+
+Solución: los punteros "hacia atrás" (hijo → padre) son Weak:
+
+    padre ──Rc (strong)──▶ hijo
+      ▲                      │
+      └──────Weak────────────┘
+
+- Weak NO cuenta como dueño (incrementa "weak_count", no "strong").
+- Para usarlo: `.upgrade()` → Option<Rc<T>>: Some si el valor sigue
+  vivo, None si ya se liberó.
+
+Regla: los dueños apuntan hacia abajo (Rc), las referencias de vuelta
+hacia arriba (Weak).
+*/
+
 // Con Rc, dos nodos que se apuntan mutuamente formarían un CICLO: el contador
 // nunca llegaría a 0 → fuga de memoria. Weak rompe el ciclo: no cuenta como dueño.
 #[derive(Debug)]
@@ -239,6 +344,21 @@ fn arbol_con_weak() {
             .collect::<Vec<_>>()
     );
 }
+
+/*
+-----------------------------------------------------------
+   5. Cow: "Clone on Write"
+-----------------------------------------------------------
+
+enum Cow<'a, str> {
+    Borrowed(&'a str),   // un préstamo del original: cero copias
+    Owned(String),       // un String nuevo: solo si hubo que cambiar algo
+}
+
+Útil en funciones que A VECES modifican la entrada: limpiar espacios,
+escapar HTML, normalizar rutas... En el caso común (no hay nada que
+cambiar) no reservas memoria; en el raro, creas un String.
+*/
 
 // Cow (Clone on Write): devuelve el &str original si no hay que cambiar nada,
 // y solo reserva un String nuevo cuando de verdad hace falta.

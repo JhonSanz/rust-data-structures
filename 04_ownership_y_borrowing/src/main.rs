@@ -43,6 +43,67 @@ fn main() {
     heap_con_box();
 }
 
+/*
+-----------------------------------------------------------
+   A. STACK y HEAP: dónde viven los datos
+-----------------------------------------------------------
+
+Para entender ownership hay que saber DÓNDE se guarda cada cosa.
+(Lo tienes explicado también en estructuras_de_datos/basic/src/pointers.rs.)
+
+- STACK (pila): datos de tamaño FIJO y conocido al compilar.
+  Muy rápido: reservar es mover un puntero, liberar es automático
+  al salir de la función.
+- HEAP (montículo): datos cuyo tamaño puede CAMBIAR o no se conoce
+  hasta ejecutar (un texto que el usuario escribe, una lista que crece).
+  Más lento: hay que pedir memoria al sistema y alguien debe liberarla.
+
+Ejemplo:
+
+let n = 5;                      // i32: 4 bytes fijos → STACK
+let s = String::from("hola");   // el texto puede crecer → HEAP
+
+STACK                          HEAP
+n  [ 5 ]
+s  [ ptr | len: 4 | cap: 4 ] ──▶ [ h | o | l | a ]
+
+Fíjate: `s` NO es el texto. `s` es una "cabecera" de 3 números
+(24 bytes) en el stack que APUNTA al texto en el heap.
+
+-----------------------------------------------------------
+   B. ¿Quién libera el heap? El DUEÑO
+-----------------------------------------------------------
+
+Otros lenguajes resuelven "¿cuándo libero el heap?" así:
+- C:        tú llamas a free()  → olvidos (fugas) o dobles free (crash)
+- Go, Java: un recolector de basura (GC) lo hace solo → pausas y más RAM
+
+Rust usa una tercera vía: cada valor tiene UN DUEÑO (owner), que es
+una variable. Cuando el dueño sale de su ÁMBITO (scope, el bloque { }
+donde se declaró), Rust llama automáticamente a `drop`, que libera
+el heap. Sin GC y sin free() manual.
+
+{
+    let s = String::from("hola");   // s es dueño del texto
+    ...
+}                                    // ← fin del ámbito: drop(s), heap liberado
+
+-----------------------------------------------------------
+   C. Drop: el "destructor"
+-----------------------------------------------------------
+
+`Drop` es un trait con un solo método, `drop(&mut self)`, que Rust
+llama al destruir un valor. String, Vec, Box, File... lo implementan
+para liberar su memoria o cerrar su archivo. Tú también puedes
+implementarlo (abajo, `Recurso` imprime un mensaje al morir).
+
+IMPORTANTE:
+- Los valores se destruyen en orden INVERSO al de creación.
+- Este patrón se llama RAII ("la adquisición de un recurso es su
+  inicialización"): el recurso vive exactamente lo que vive su dueño.
+  Por eso en Rust no hace falta `defer` ni `finally`.
+*/
+
 // Un tipo con destructor para VER cuándo se libera cada valor.
 struct Recurso(&'static str);
 
@@ -63,6 +124,43 @@ fn ambito_y_drop() {
     drop(c); // liberación anticipada explícita
     println!("  fin de la función");
 } // ← aquí muere `a` (los valores se liberan en orden inverso de creación)
+
+/*
+-----------------------------------------------------------
+   D. MOVE: transferir la propiedad
+-----------------------------------------------------------
+
+¿Qué pasa al hacer `let s2 = s1;` con un String?
+
+ANTES:
+STACK                              HEAP
+s1 [ ptr | len 4 | cap 4 ] ──────▶ [ h | o | l | a ]
+
+DESPUÉS de `let s2 = s1;`:
+STACK                              HEAP
+s1 [   ✗ inválida ✗       ]
+s2 [ ptr | len 4 | cap 4 ] ──────▶ [ h | o | l | a ]
+
+- Se copia SOLO la cabecera (24 bytes), no el texto del heap.
+- `s1` queda INVÁLIDA: el compilador ya no te deja usarla.
+
+¿Por qué invalidar s1? Si las dos fueran válidas, al terminar el
+ámbito se haría drop(s1) y drop(s2) → se liberaría DOS VECES la misma
+memoria (un "double free", un bug grave en C). Con un único dueño,
+eso es imposible.
+
+A esto se le llama MOVER (move). Ocurre al:
+- asignar:              let b = a;
+- pasar a una función:  f(a);
+- devolver:             return a;
+- recorrer con for:     for x in vec { }   (el for se queda con el Vec)
+
+Conclusión:
+- Mover es BARATO (copiar 24 bytes), nunca copia datos del heap.
+- Si de verdad quieres dos copias independientes: `.clone()`.
+- Si solo quieres que alguien USE el valor sin quedárselo: préstalo
+  con `&` (ver sección F).
+*/
 
 fn movimientos() {
     // String guarda sus datos en el heap. Asignarla a otra variable MUEVE la
@@ -88,6 +186,36 @@ fn movimientos() {
     println!();
     // println!("{nombres:?}"); // ERROR: `nombres` se movió al for
 }
+
+/*
+-----------------------------------------------------------
+   E. Copy vs Clone
+-----------------------------------------------------------
+
+¿Por qué `let y = x;` con un i32 NO invalida x?
+
+Porque i32 implementa el trait `Copy`: vive entero en el stack y
+copiarlo es tan barato como moverlo. Así que Rust lo copia y las dos
+variables siguen siendo válidas.
+
+STACK
+x [ 5 ]
+y [ 5 ]     ← copia independiente, no hay heap de por medio
+
+| Trait   | Qué hace                         | Cuándo ocurre   | Coste        |
+| ------- | -------------------------------- | --------------- | ------------ |
+| Copy    | Copia bit a bit                  | AUTOMÁTICO      | Muy barato   |
+| Clone   | Copia profunda (incluido heap)   | Llamando clone() | Puede ser caro |
+
+Son Copy: enteros, f32/f64, bool, char, referencias &T, y tuplas o
+arrays formados SOLO por tipos Copy.
+NO son Copy: String, Vec, Box... (todo lo que es dueño de heap).
+
+IMPORTANTE:
+- Ver muchos `.clone()` en un código suele indicar que se está
+  "peleando" con el borrow checker. Casi siempre hay una solución con
+  referencias.
+*/
 
 fn copy_y_clone() {
     // Los tipos simples de tamaño fijo (enteros, f64, bool, char, y tuplas o
@@ -145,6 +273,43 @@ fn anadir_exclamacion(mut s: String) -> String {
     s
 }
 
+/*
+-----------------------------------------------------------
+   F. BORROWING: prestar sin ceder la propiedad
+-----------------------------------------------------------
+
+¿Qué es una referencia?
+Un puntero SEGURO a un valor que es de otro. Crearla se llama
+"tomar prestado" (borrow). Como prestar un libro: tú lo lees, pero
+sigue siendo del dueño, y tienes que devolverlo antes de que el
+dueño se vaya.
+
+let s = String::from("hola");
+let r = &s;
+
+STACK                              HEAP
+s [ ptr | len | cap ] ───────────▶ [ h | o | l | a ]
+r [ ptr ] ──▶ s
+
+- `r` apunta a `s` (a su cabecera), que apunta al heap.
+- `s` sigue siendo el dueño: cuando `s` muera, se libera el heap.
+- `r` NO libera nada al morir: no es dueño.
+
+Dos tipos de préstamo:
+
+| Tipo     | Sintaxis | Permite         | Cuántos a la vez |
+| -------- | -------- | --------------- | ---------------- |
+| Compartido | &T     | Solo LEER       | Todos los que quieras |
+| Exclusivo  | &mut T | Leer y MODIFICAR| Solo UNO (y ningún &T) |
+
+Regla de oro (la comprueba el "borrow checker" al compilar):
+    O muchos lectores, O un único escritor. Nunca las dos cosas.
+
+Y además: una referencia NUNCA puede vivir más que el valor al que
+apunta. Así es imposible tener un "puntero colgante" (dangling
+pointer): un puntero a memoria ya liberada.
+*/
+
 fn referencias() {
     let s = String::from("prestada");
 
@@ -171,6 +336,42 @@ fn referencias() {
 fn longitud(s: &str) -> usize {
     s.len()
 }
+
+/*
+-----------------------------------------------------------
+   G. ¿Por qué no puedo leer y modificar a la vez?
+-----------------------------------------------------------
+
+Parece una regla caprichosa hasta que ves el bug que evita:
+
+let mut v = vec![1, 2, 3];
+let primero = &v[0];   // préstamo compartido: apunta DENTRO del heap del Vec
+v.push(4);             // ✗ ERROR de compilación... ¿por qué?
+
+El Vec tenía sitio para 3 elementos. Para meter el 4º, `push` pide un
+bloque NUEVO más grande, copia los datos y LIBERA el bloque viejo:
+
+ANTES del push:
+v [ ptr | len 3 | cap 3 ] ──▶ [ 1 | 2 | 3 ]      (bloque viejo)
+primero ─────────────────────────^
+
+DESPUÉS del push:
+v [ ptr | len 4 | cap 6 ] ──▶ [ 1 | 2 | 3 | 4 | _ | _ ]   (bloque nuevo)
+primero ──▶ [ memoria liberada ] 💥
+
+`primero` apuntaría a memoria que ya no existe. En C esto compila y
+falla "a veces". En Rust no compila: es exactamente la regla
+"no se puede tener &v mientras alguien tiene &mut v".
+
+-----------------------------------------------------------
+
+NLL ("Non-Lexical Lifetimes"): un préstamo termina en su ÚLTIMO USO,
+no al cerrar la llave. Por eso esto SÍ compila:
+
+let r1 = &mut s;
+r1.push('!');      // último uso de r1 → aquí acaba el préstamo
+let r2 = &s;       // OK: r1 ya no está activo
+*/
 
 fn referencias_mutables() {
     let mut s = String::from("hola");
@@ -205,6 +406,34 @@ fn referencias_mutables() {
 fn anadir_mundo(s: &mut String) {
     s.push_str(", mundo");
 }
+
+/*
+-----------------------------------------------------------
+   H. SLICES: una vista a un trozo
+-----------------------------------------------------------
+
+¿Qué es un slice?
+Una referencia a una parte CONTIGUA de una colección, sin copiarla.
+Tipos: &str (trozo de texto), &[T] (trozo de array o Vec).
+
+let frase = String::from("hola mundo");
+let hola: &str = &frase[0..4];
+
+STACK                                HEAP
+frase [ ptr | len 10 | cap 10 ] ───▶ [ h | o | l | a |   | m | u | n | d | o ]
+hola  [ ptr | len 4 ] ──────────────▶  ^
+
+Un slice es un "puntero gordo" (fat pointer): guarda DOS cosas,
+dónde empieza y cuántos elementos tiene. No tiene `cap` porque no
+puede crecer: no es dueño de nada.
+
+IMPORTANTE:
+- Por eso las funciones suelen recibir &str en vez de &String, y
+  &[T] en vez de &Vec<T>: aceptan más cosas (literales, arrays,
+  trozos) y no exigen nada que no necesiten.
+- Como cualquier préstamo, mientras exista el slice no puedes
+  modificar el original (frase.clear() no compilaría).
+*/
 
 fn slices() {
     // Un slice es una referencia a un RANGO contiguo de una colección.

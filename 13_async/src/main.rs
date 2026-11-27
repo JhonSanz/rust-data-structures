@@ -21,6 +21,68 @@ use tokio::task::JoinSet;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
+/*
+-----------------------------------------------------------
+   ¿Qué problema resuelve async?
+-----------------------------------------------------------
+
+Un servidor web pasa casi todo el tiempo ESPERANDO: a que llegue la
+petición, a la base de datos, a la red. Con un hilo por petición,
+10.000 clientes = 10.000 hilos, cada uno con su pila de ~MB, casi
+todos dormidos. Mucha memoria para no hacer nada.
+
+Async permite que UN hilo atienda miles de tareas: cuando una tarea
+tiene que esperar, CEDE el hilo a otra que pueda avanzar.
+
+    hilo 1:  [tarea A]─espera red─▶[tarea B]─espera BD─▶[tarea A]─▶[tarea C]...
+
+-----------------------------------------------------------
+   Los términos, uno por uno
+-----------------------------------------------------------
+
+FUTURE: un valor que representa un cálculo que TODAVÍA NO ha
+terminado (quizá ni empezado). Una `async fn` no ejecuta nada al
+llamarla: devuelve un Future.
+
+    let f = descargar("a.txt", 100);   // nada ocurre todavía
+    let texto = f.await;               // ahora sí se ejecuta
+
+PEREZOSO (lazy): un Future no hace nada hasta que alguien lo
+"empuja". Un Future que nadie espera nunca se ejecuta.
+
+.await: "ejecuta este Future y, si tiene que esperar, cede el hilo
+mientras tanto". Solo se puede usar dentro de funciones async.
+
+POLL: por dentro, el runtime pregunta al Future "¿ya terminaste?":
+    → Poll::Ready(valor): sí, aquí está
+    → Poll::Pending:      no, avísame cuando pueda avanzar (WAKER)
+
+MÁQUINA DE ESTADOS: el compilador convierte cada async fn en un enum
+con un estado por cada .await. Por eso una tarea ocupa solo unos KB.
+
+RUNTIME / EXECUTOR: el programa que hace poll de los Futures y
+reparte las tareas entre sus hilos. Rust NO trae uno en la std (para
+que puedas elegir); Tokio es el estándar de facto.
+
+TAREA (task): un Future lanzado con tokio::spawn, que el runtime
+ejecuta por su cuenta (el equivalente a una goroutine). Es mucho más
+ligera que un hilo.
+
+-----------------------------------------------------------
+
+| Concepto        | Hilos (módulo 12)  | Async (este módulo)    |
+| --------------- | ------------------ | ---------------------- |
+| Unidad          | thread::spawn      | tokio::spawn (tarea)   |
+| La gestiona     | el sistema operativo | el runtime (Tokio)   |
+| Cuesta          | ~MB de pila        | ~KB                    |
+| Cambiar de una a otra | el SO la interrumpe cuando quiere | solo en cada .await |
+| Ideal para      | CÁLCULO (CPU)      | ESPERAS (red, disco)   |
+
+IMPORTANTE: como una tarea solo cede el hilo en un .await, una tarea
+que hace un cálculo largo o un std::thread::sleep BLOQUEA el hilo y
+ninguna otra tarea de ese hilo avanza. Para eso existe spawn_blocking.
+*/
+
 // #[tokio::main] crea el runtime y ejecuta main dentro de él.
 #[tokio::main]
 async fn main() {
@@ -108,6 +170,22 @@ async fn tareas() {
     );
 }
 
+/*
+-----------------------------------------------------------
+   join! vs select! y la CANCELACIÓN
+-----------------------------------------------------------
+
+join!(a, b)    → espera a que terminen TODOS. Resultado: (ra, rb)
+select! {a, b} → espera al PRIMERO que termine y descarta el resto.
+
+¿Qué pasa con el Future que "pierde" en select!? Se DESTRUYE (drop),
+y destruir un Future lo CANCELA: como es perezoso, simplemente nadie
+vuelve a hacerle poll y no avanza más.
+
+Así funcionan los timeouts: timeout(d, f) es un select! entre `f` y
+un temporizador de duración d.
+*/
+
 async fn select() {
     // select! espera a varias ramas y se queda con la PRIMERA; las demás se cancelan.
     let resultado = tokio::select! {
@@ -145,6 +223,21 @@ async fn canales() {
 
     // Otros: tokio::sync::broadcast (varios receptores) y watch (último valor)
 }
+
+/*
+-----------------------------------------------------------
+   ¿std::sync::Mutex o tokio::sync::Mutex?
+-----------------------------------------------------------
+
+| Si dentro del lock...               | Usa                 |
+| ----------------------------------- | ------------------- |
+| NO hay ningún .await (lo normal)    | std::sync::Mutex (más rápido) |
+| hay un .await con el candado tomado | tokio::sync::Mutex  |
+
+Con std::sync::Mutex, mantener el guard a través de un .await es un
+problema: la tarea cede el hilo CON el candado tomado, y otra tarea
+de ese hilo que intente tomarlo se queda bloqueada.
+*/
 
 async fn estado_compartido() {
     use std::sync::Arc;

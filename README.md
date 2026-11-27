@@ -17,7 +17,11 @@ resumen de sus temas.
 cargo run -p fundamentos
 ```
 
-3. Modifica el código, rompe cosas y vuelve a ejecutar. En Rust, **leer los errores del compilador** es la mitad del aprendizaje: suelen decirte exactamente qué cambiar.
+3. Si un término no te queda claro, búscalo en el [**GLOSARIO**](GLOSARIO.md): cada uno tiene una
+   definición sencilla, un ejemplo y el módulo donde se explica a fondo. En los temas complejos
+   (03, 04, 07, 08, 09, 11, 12, 13), el código incluye bloques `/* --- ... --- */` con diagramas
+   de memoria y comparativas.
+4. Modifica el código, rompe cosas y vuelve a ejecutar. En Rust, **leer los errores del compilador** es la mitad del aprendizaje: suelen decirte exactamente qué cambiar.
 
 ## Índice
 

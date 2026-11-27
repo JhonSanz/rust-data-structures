@@ -57,6 +57,49 @@ fn main() {
     lifetimes();
 }
 
+/*
+-----------------------------------------------------------
+   GENÉRICOS y RESTRICCIONES (trait bounds)
+-----------------------------------------------------------
+
+¿Qué es un genérico?
+Un "hueco" para un tipo, que se rellena al usar la función.
+`T` es solo un nombre (podría ser `Elemento`); por convención, una
+letra mayúscula.
+
+fn mayor<T>(lista: &[T]) -> Option<T>
+        ^^^ "esta función sirve para cualquier tipo T"
+
+Pero "cualquier tipo" es demasiado: para encontrar el mayor hay que
+COMPARAR, y no todos los tipos se pueden comparar. Por eso se añade
+una RESTRICCIÓN (bound):
+
+fn mayor<T: PartialOrd + Copy>(lista: &[T]) -> Option<T>
+            ^^^^^^^^^^^^^^^^^ "...siempre que T se pueda comparar (<, >)
+                                 y copiar"
+
+Sin la restricción, `x > max` no compila: el compilador no puede
+suponer que T sabe compararse. Las restricciones son la LISTA DE
+CAPACIDADES que exiges al tipo.
+
+-----------------------------------------------------------
+   Monomorfización: por qué los genéricos son gratis
+-----------------------------------------------------------
+
+Al compilar, Rust genera una versión concreta por cada tipo usado:
+
+   mayor(&[3, 9, 2])          →  mayor_i32(...)
+   mayor(&["pera", "uva"])    →  mayor_str(...)
+
+Es como si hubieras escrito cada versión a mano: cero coste en
+ejecución. El precio: el binario crece y compilar tarda más.
+
+`where` es solo otra forma de escribir las restricciones, más legible
+cuando son muchas:
+
+fn f<K, V>(x: K, y: V) where K: Display, V: Debug { ... }
+*/
+
 // <T: PartialOrd> = "para cualquier tipo T que se pueda comparar con <"
 fn mayor<T: PartialOrd + Copy>(lista: &[T]) -> Option<T> {
     let mut iter = lista.iter();
@@ -156,6 +199,25 @@ fn structs_genericos() {
     println!("suma del árbol = {}", arbol.suma());
 }
 
+/*
+-----------------------------------------------------------
+   Genérico vs tipo asociado
+-----------------------------------------------------------
+
+Dos formas de que un trait dependa de un tipo:
+
+1) Parámetro genérico:   trait Convertir<T> { fn convertir(&self) -> T; }
+   Un mismo tipo puede implementarlo VARIAS veces:
+   Convertir<String>, Convertir<i32>...
+
+2) Tipo asociado:        trait Contenedor { type Item; ... }
+   El implementador lo elige UNA vez. Pila<i32> solo puede tener un Item.
+   Iterator usa esto: un iterador produce UN tipo de elemento.
+
+Regla práctica: si para cada tipo tiene sentido UNA sola respuesta,
+tipo asociado.
+*/
+
 // --- Trait con tipo asociado (como Iterator::Item) -----------------------------
 trait Contenedor {
     type Item; // el implementador decide qué tipo es
@@ -213,6 +275,59 @@ fn suma_array<const N: usize>(arr: [i32; N]) -> i32 {
     arr.iter().sum()
 }
 
+/*
+-----------------------------------------------------------
+   LIFETIMES: cuánto vive una referencia
+-----------------------------------------------------------
+
+¿Qué es un lifetime?
+El tramo del programa durante el cual una referencia es válida.
+El compilador ya los conoce para cada variable; se ESCRIBEN (con
+apóstrofo: 'a, 'b) solo cuando hay que decirle cómo se RELACIONAN
+varias referencias.
+
+IMPORTANTE: escribir un lifetime NO cambia cuánto vive nada. Es una
+ETIQUETA para que el compilador compruebe que todo encaja.
+
+-----------------------------------------------------------
+
+El problema:
+
+fn mas_larga(a: &str, b: &str) -> &str { if ... { a } else { b } }
+
+La referencia devuelta sale de `a` o de `b`... ¿de cuál? Depende de
+los datos, así que el compilador no sabe cuánto puede vivir el
+resultado. Hay que decírselo:
+
+fn mas_larga<'a>(a: &'a str, b: &'a str) -> &'a str
+
+Se lee: "existe un tramo 'a en el que a y b son válidas, y el
+resultado es válido durante ese mismo tramo". En la práctica, 'a será
+el tramo de la que viva MENOS:
+
+    let s1 = String::from("larga");      s1  ●━━━━━━━━━━━━━━━━━━━┓
+    {                                                             ┃
+        let s2 = String::from("x");      s2  ●━━━━━━━━┓           ┃
+        let r = mas_larga(&s1, &s2);     'a = ◀━━━━━━━▶ (la más corta)
+        println!("{r}");   // ✓ dentro de 'a           ┃           ┃
+    }                                    s2 muere ━━━━━┛           ┃
+    // println!("{r}");    // ✗ fuera de 'a: s2 ya no existe       ┃
+                                         s1 muere ━━━━━━━━━━━━━━━━━┛
+
+-----------------------------------------------------------
+   ELISIÓN: por qué casi nunca los escribes
+-----------------------------------------------------------
+
+El compilador rellena los lifetimes solo siguiendo 3 reglas:
+1. Cada parámetro referencia recibe su propio lifetime.
+2. Si hay UNA sola referencia de entrada, la salida usa su lifetime.
+     fn primera_palabra(s: &str) -> &str     ✓ (la salida sale de s)
+3. Si hay `&self`, la salida usa el lifetime de self (en métodos).
+
+Solo cuando estas reglas no bastan (como mas_larga, con DOS
+entradas) tienes que escribirlos tú.
+*/
+
 // --- Lifetimes ----------------------------------------------------------------
 // ¿Cuánto vive la referencia devuelta? Puede venir de `a` o de `b`, así que el
 // compilador necesita que se lo digamos: 'a significa "el resultado vive como
@@ -226,6 +341,27 @@ fn mas_larga<'a>(a: &'a str, b: &'a str) -> &'a str {
 fn primera_palabra(s: &str) -> &str {
     s.split_whitespace().next().unwrap_or("")
 }
+
+/*
+-----------------------------------------------------------
+   Structs que guardan referencias
+-----------------------------------------------------------
+
+struct Extracto<'a> { parte: &'a str }
+
+Se lee: "un Extracto NO PUEDE VIVIR MÁS que el texto al que apunta".
+
+texto   ●━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+extracto      ●━━━━━━━━━━━┓  ✓      ┃   (vive dentro de texto)
+extracto2           ●━━━━━━━━━━━━━━━━━━━━━┓  ✗ sobrevive a texto
+
+'static: el lifetime de TODO el programa. Lo tienen los literales
+("hola" está dentro del binario) y las constantes.
+
+Consejo: si un struct con lifetimes se complica, haz que sea DUEÑO
+de sus datos (String en vez de &str). Cuesta una copia, pero
+desaparece el problema.
+*/
 
 // Un struct que GUARDA una referencia necesita un lifetime: el struct no
 // puede vivir más que el texto que referencia.
