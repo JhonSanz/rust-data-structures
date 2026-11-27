@@ -1,1 +1,5 @@
-*/target
+# Compilaciones (la del workspace y las de cualquier crate suelto)
+target/
+# Bases de datos SQLite de las demos del módulo 17
+*.db
+*.db-*

@@ -1,0 +1,10 @@
+# Lista BLANCA: se ignora todo y solo se envía al build lo imprescindible.
+#   - contexto mínimo (no se envían los GB de target/)
+#   - sin secretos, .git ni bases de datos locales (*.db)
+#   - tocar otros módulos del tutorial no invalida la caché del build
+*
+!Cargo.toml
+!Cargo.lock
+!17_proyecto_api_rest/Cargo.toml
+!17_proyecto_api_rest/src
+!17_proyecto_api_rest/tests

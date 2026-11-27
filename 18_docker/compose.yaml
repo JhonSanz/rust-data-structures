@@ -1,0 +1,51 @@
+# =============================================================================
+# Ejecución "de producción" con Docker Compose y endurecimiento de seguridad.
+#
+#   docker compose -f 18_docker/compose.yaml up --build -d
+#   docker compose -f 18_docker/compose.yaml ps        # ver el estado (healthy)
+#   docker compose -f 18_docker/compose.yaml logs -f
+#   docker compose -f 18_docker/compose.yaml down      # (-v borra también los datos)
+# =============================================================================
+services:
+  api:
+    build:
+      context: ..                      # raíz del tutorial (donde está el Cargo.toml del workspace)
+      dockerfile: 18_docker/Dockerfile
+      target: final
+      args:
+        VERSION: "1.0.0"
+    image: tareas-api:1.0.0
+    ports:
+      - "8080:8080"
+
+    # Volumen con nombre: la BD SQLite sobrevive a `down`/`up` y a actualizar
+    # la imagen. Docker lo inicializa con el contenido y los permisos del /data
+    # de la imagen (propiedad del usuario 65532).
+    volumes:
+      - datos:/data
+
+    # Rust no tiene recolector de basura: no hay nada que ajustar (en Go haría
+    # falta GOMEMLIMIT). La memoria se libera en cuanto deja de usarse.
+
+    # --- Endurecimiento (hardening) ---
+    read_only: true                    # sistema de archivos de solo lectura...
+    tmpfs:
+      - /tmp                           # ...excepto /tmp (en RAM) y el volumen /data
+    cap_drop:
+      - ALL                            # sin capacidades de Linux: no las necesita
+    security_opt:
+      - no-new-privileges:true         # impide escalar privilegios (setuid, etc.)
+
+    # Límites de recursos: esta API usa unos pocos MB de RAM
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 32M
+
+    restart: unless-stopped
+    # Tiempo para el apagado ordenado tras SIGTERM
+    stop_grace_period: 10s
+
+volumes:
+  datos:

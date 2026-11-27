@@ -1,0 +1,15 @@
+[package]
+name = "testing"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Un benchmark sin el "harness" de test (el #[bench] nativo solo existe en nightly).
+#   cargo bench -p testing
+[[bench]]
+name = "rendimiento"
+harness = false

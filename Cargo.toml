@@ -1,0 +1,66 @@
+# =============================================================================
+# Workspace del Tour de Rust en español.
+# Un *workspace* agrupa varios paquetes (crates) que comparten:
+#   - un único Cargo.lock (mismas versiones de dependencias en todos)
+#   - un único directorio target/ (no se recompila lo mismo dos veces)
+# Cada módulo del tutorial es un paquete binario: `cargo run -p <nombre>`.
+# =============================================================================
+[workspace]
+resolver = "3"
+members = [
+    "01_fundamentos",
+    "02_control_de_flujo",
+    "03_funciones",
+    "04_ownership_y_borrowing",
+    "05_structs_y_enums",
+    "06_colecciones",
+    "07_traits",
+    "08_errores",
+    "09_genericos_y_lifetimes",
+    "10_iteradores_y_closures",
+    "11_smart_pointers",
+    "12_concurrencia",
+    "13_async",
+    "14_modulos_y_crates",
+    "15_testing",
+    "16_biblioteca_estandar",
+    "17_proyecto_api_rest",
+    "retos",
+    # Estructuras de datos implementadas desde cero (crates propios, anteriores al tour)
+    "estructuras_de_datos/*",
+]
+
+# Valores heredables por los miembros con `edition.workspace = true`, etc.
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+# Las versiones de dependencias se declaran UNA vez aquí y los miembros las
+# usan con `tokio.workspace = true`.
+[workspace.dependencies]
+tokio = { version = "1.54", features = ["full"] }
+tokio-util = "0.7"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `bundled` compila SQLite desde C junto al crate: no hace falta tenerlo instalado.
+rusqlite = { version = "0.43", features = ["bundled"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+# Lints comunes para todo el workspace (cada miembro los activa con
+# `[lints] workspace = true`).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Perfil de distribución para producción (lo usa el Dockerfile del módulo 18):
+#   cargo build --profile dist -p tareas_api   → target/dist/tareas_api
+# Hereda de release y añade optimizaciones que alargan la compilación.
+[profile.dist]
+inherits = "release"
+lto = true          # optimización entre crates en el enlazado: más rápido y pequeño
+codegen-units = 1   # menos paralelismo al compilar, mejor optimización
+strip = true        # quita símbolos de depuración del binario
+panic = "abort"     # sin desenrollado de pila: binario más pequeño
+                    # (por eso no está en release: rompería catch_unwind del módulo 08)

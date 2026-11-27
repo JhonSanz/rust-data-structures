@@ -1,0 +1,102 @@
+# =============================================================================
+# RETOS — un archivo de retos por módulo del tutorial.
+#   cargo run -p retos              → tabla de progreso de todos los retos
+#   cargo run -p retos -- r04       → detalle (y errores) de un módulo
+#   cargo test -p retos --test r04  → lo mismo, directamente con cargo test
+# =============================================================================
+[package]
+name = "retos"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Los retos están llenos de todo!() y parámetros sin usar: silenciamos esos
+# avisos para que no tapen los errores importantes.
+[lints.rust]
+unused = "allow"
+dead_code = "allow"
+
+[lints.clippy]
+all = { level = "allow", priority = -1 }
+
+[dev-dependencies]
+tareas_api = { path = "../17_proyecto_api_rest" }
+tokio = { workspace = true, features = ["test-util"] }
+tokio-util.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tower.workspace = true
+http-body-util.workspace = true
+
+# Cada archivo de retos es un objetivo de test INDEPENDIENTE: si uno no compila,
+# los demás siguen funcionando.
+[[test]]
+name = "r01"
+path = "ejercicios/r01_fundamentos.rs"
+
+[[test]]
+name = "r02"
+path = "ejercicios/r02_control_de_flujo.rs"
+
+[[test]]
+name = "r03"
+path = "ejercicios/r03_funciones.rs"
+
+[[test]]
+name = "r04"
+path = "ejercicios/r04_ownership.rs"
+
+[[test]]
+name = "r05"
+path = "ejercicios/r05_structs_y_enums.rs"
+
+[[test]]
+name = "r06"
+path = "ejercicios/r06_colecciones.rs"
+
+[[test]]
+name = "r07"
+path = "ejercicios/r07_traits.rs"
+
+[[test]]
+name = "r08"
+path = "ejercicios/r08_errores.rs"
+
+[[test]]
+name = "r09"
+path = "ejercicios/r09_genericos_y_lifetimes.rs"
+
+[[test]]
+name = "r10"
+path = "ejercicios/r10_iteradores.rs"
+
+[[test]]
+name = "r11"
+path = "ejercicios/r11_smart_pointers.rs"
+
+[[test]]
+name = "r12"
+path = "ejercicios/r12_concurrencia.rs"
+
+[[test]]
+name = "r13"
+path = "ejercicios/r13_async.rs"
+
+[[test]]
+name = "r14"
+path = "ejercicios/r14_modulos.rs"
+
+[[test]]
+name = "r15"
+path = "ejercicios/r15_testing.rs"
+
+[[test]]
+name = "r16"
+path = "ejercicios/r16_biblioteca_estandar.rs"
+
+[[test]]
+name = "r17"
+path = "ejercicios/r17_api.rs"
+

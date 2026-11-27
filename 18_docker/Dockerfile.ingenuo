@@ -1,0 +1,24 @@
+# =============================================================================
+# ANTI-EJEMPLO: así NO se hace. Funciona, pero compáralo con el Dockerfile.
+#   docker build -f 18_docker/Dockerfile.ingenuo -t tareas-api:ingenua .
+# =============================================================================
+
+# Imagen completa de Rust (Debian + toolchain): más de 1 GB, y TODO acaba en producción
+FROM rust:1.99
+
+WORKDIR /app
+
+# Copia TODO el tutorial: cualquier cambio en cualquier archivo invalida la
+# caché y obliga a descargar y recompilar todas las dependencias desde cero.
+COPY . .
+
+# Compila en la misma imagen que se ejecuta: el código fuente, cargo, rustc,
+# el registro de crates y target/ (cientos de MB) viajan a producción.
+RUN cargo build --release -p tareas_api
+
+EXPOSE 8080
+
+# Se ejecuta como root.
+# Forma "shell": el PID 1 es /bin/sh, no la app. Que SIGTERM llegue a la app
+# depende del shell, y `docker stop` puede acabar esperando 10 s y matándola.
+CMD ./target/release/tareas_api

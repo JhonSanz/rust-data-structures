@@ -1,0 +1,15 @@
+[package]
+name = "modulos"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Features: compilación condicional que el usuario del crate activa a voluntad.
+#   cargo run -p modulos --features cientifica
+[features]
+default = []
+cientifica = []

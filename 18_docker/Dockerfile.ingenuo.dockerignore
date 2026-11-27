@@ -1,0 +1,3 @@
+# Hasta el Dockerfile ingenuo necesita ignorar target/: si no, enviaría
+# varios GB de compilaciones locales al daemon de Docker en cada build.
+target
